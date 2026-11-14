@@ -2,10 +2,12 @@
 
 mod aabb;
 mod hit;
+mod primitive;
 mod quad;
 mod sphere;
 
 pub use aabb::Aabb;
 pub use hit::{HitRecord, Hittable, MaterialId};
+pub use primitive::Primitive;
 pub use quad::Quad;
 pub use sphere::Sphere;
