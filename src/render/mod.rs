@@ -28,13 +28,26 @@ pub struct RenderSettings {
     /// Converges to the same image as plain path tracing, with far less noise
     /// when lights are small.
     pub direct_lighting: bool,
+    /// Scale down any sample brighter than this. Trades a little lost energy
+    /// (bias) for the removal of fireflies from rare, very bright paths such
+    /// as caustics. `None` keeps the estimate unbiased.
+    pub max_sample_radiance: Option<f64>,
     /// Report progress on stderr.
     pub progress: bool,
 }
 
 impl Default for RenderSettings {
     fn default() -> Self {
-        RenderSettings { width: 400, height: 225, samples_per_pixel: 64, max_depth: 50, seed: 0, direct_lighting: true, progress: false }
+        RenderSettings {
+            width: 400,
+            height: 225,
+            samples_per_pixel: 64,
+            max_depth: 50,
+            seed: 0,
+            direct_lighting: true,
+            max_sample_radiance: None,
+            progress: false,
+        }
     }
 }
 
@@ -51,6 +64,14 @@ fn is_valid(sample: Color) -> bool {
     sample.is_finite() && sample.min_component() >= 0.0
 }
 
+/// Scale `sample` so its brightest channel is at most `limit`, keeping its hue.
+fn clamp_sample(sample: Color, limit: Option<f64>) -> Color {
+    match limit {
+        Some(limit) if sample.max_component() > limit => sample * (limit / sample.max_component()),
+        _ => sample,
+    }
+}
+
 /// Estimate one pixel. Returns its colour and how many samples were rejected.
 fn render_pixel(scene: &Scene, camera: &Camera, settings: &RenderSettings, x: u32, y: u32) -> (Color, u64) {
     let index = y as u64 * settings.width as u64 + x as u64;
@@ -61,7 +82,7 @@ fn render_pixel(scene: &Scene, camera: &Camera, settings: &RenderSettings, x: u3
         let sample = radiance(scene, camera.ray(x, y, &mut sampler), settings, &mut sampler);
         // One bad sample added to the sum would poison the pixel for good.
         if is_valid(sample) {
-            sum += sample;
+            sum += clamp_sample(sample, settings.max_sample_radiance);
             accepted += 1;
         }
     }
@@ -102,4 +123,25 @@ pub fn render(scene: &Scene, settings: &RenderSettings) -> (Film, RenderStats) {
 
     let stats = RenderStats { rejected_samples: rejected_samples.into_inner(), elapsed: start.elapsed() };
     (film, stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_samples_are_recognised() {
+        assert!(is_valid(Color::new(0.0, 1.0, 1e9)));
+        assert!(!is_valid(Color::new(f64::NAN, 0.0, 0.0)));
+        assert!(!is_valid(Color::new(0.0, f64::INFINITY, 0.0)));
+        assert!(!is_valid(Color::new(0.0, 0.0, -1e-9)));
+    }
+
+    #[test]
+    fn clamping_preserves_hue() {
+        let bright = Color::new(40.0, 20.0, 10.0);
+        assert_eq!(clamp_sample(bright, Some(10.0)), Color::new(10.0, 5.0, 2.5));
+        assert_eq!(clamp_sample(bright, None), bright);
+        assert_eq!(clamp_sample(Color::splat(0.5), Some(10.0)), Color::splat(0.5));
+    }
 }
