@@ -1,0 +1,18 @@
+[package]
+name = "penumbra"
+version = "0.1.0"
+edition = "2021"
+description = "A CPU path tracer written from scratch in Rust"
+repository = "https://github.com/Jeetchavan02/Penumbra"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+# The integration tests render small images; unoptimised float code is too slow for that.
+[profile.dev]
+opt-level = 2
