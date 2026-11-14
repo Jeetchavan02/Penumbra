@@ -1,8 +1,10 @@
 //! Surface response: how a ray continues after a hit, and what the surface emits.
 
+mod dielectric;
 mod lambertian;
 mod metal;
 
+pub use dielectric::Dielectric;
 pub use lambertian::Lambertian;
 pub use metal::Metal;
 
@@ -27,6 +29,7 @@ pub struct Scatter {
 pub enum Material {
     Lambertian(Lambertian),
     Metal(Metal),
+    Dielectric(Dielectric),
 }
 
 impl Material {
@@ -38,6 +41,12 @@ impl Material {
         Material::Metal(Metal { albedo, fuzz: fuzz.clamp(0.0, 1.0) })
     }
 
+    /// Clear glass-like material with the given refractive index.
+    pub fn dielectric(ior: f64) -> Self {
+        assert!(ior > 0.0 && ior.is_finite(), "refractive index must be positive");
+        Material::Dielectric(Dielectric { ior, tint: Color::ONE })
+    }
+
     /// Continue the path, or return `None` if the ray is absorbed.
     ///
     /// Inputs are borrowed read-only; the sampler is the only mutable state and
@@ -46,6 +55,7 @@ impl Material {
         match self {
             Material::Lambertian(m) => m.scatter(hit, sampler),
             Material::Metal(m) => m.scatter(ray_in, hit, sampler),
+            Material::Dielectric(m) => m.scatter(ray_in, hit, sampler),
         }
     }
 }
@@ -104,5 +114,66 @@ mod tests {
             }
         }
         assert!(absorbed > 0);
+    }
+
+    #[test]
+    fn matched_index_passes_straight_through() {
+        let m = Material::dielectric(1.0);
+        let (ray, hit) = hit_from(Vec3::new(1.0, -1.0, 0.0));
+        let mut sampler = Sampler::new(1);
+        for _ in 0..100 {
+            let s = m.scatter(&ray, &hit, &mut sampler).unwrap();
+            assert!((s.ray.dir() - ray.dir()).length() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn glass_bends_toward_the_normal_on_entry() {
+        let m = Material::dielectric(1.5);
+        let (ray, hit) = hit_from(Vec3::new(1.0, -1.0, 0.0));
+        let mut sampler = Sampler::new(1);
+        let (mut refracted, mut reflected) = (0, 0);
+        for _ in 0..2_000 {
+            let d = m.scatter(&ray, &hit, &mut sampler).unwrap().ray.dir();
+            assert!((d.length() - 1.0).abs() < 1e-9);
+            if d.y < 0.0 {
+                refracted += 1;
+                // sin(out) = sin(45 deg) / 1.5
+                assert!((d.x - 0.5_f64.sqrt() / 1.5).abs() < 1e-12);
+            } else {
+                reflected += 1;
+            }
+        }
+        assert!(refracted > reflected && reflected > 0);
+    }
+
+    #[test]
+    fn total_internal_reflection_beyond_the_critical_angle() {
+        let m = Material::dielectric(1.5);
+        // Leaving glass at 60 degrees from the normal; the critical angle is ~41.8.
+        let dir = Vec3::new(3.0_f64.sqrt(), 1.0, 0.0).normalized();
+        let ray = Ray::new(Vec3::ZERO - dir, dir);
+        let hit = HitRecord::new(&ray, 1.0, Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), MaterialId(0));
+        assert!(!hit.front_face);
+        let mut sampler = Sampler::new(1);
+        for _ in 0..500 {
+            let d = m.scatter(&ray, &hit, &mut sampler).unwrap().ray.dir();
+            assert!(d.is_finite());
+            assert!((d - dir.reflect(hit.normal)).length() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn exactly_grazing_and_exactly_normal_incidence_stay_finite() {
+        let m = Material::dielectric(1.5);
+        let mut sampler = Sampler::new(1);
+        for dir in [Vec3::new(0.0, -1.0, 0.0), Vec3::new(1.0, -1e-12, 0.0), Vec3::new(1.0, 0.0, 0.0)] {
+            let (ray, hit) = hit_from(dir);
+            for _ in 0..100 {
+                if let Some(s) = m.scatter(&ray, &hit, &mut sampler) {
+                    assert!(s.ray.dir().is_finite());
+                }
+            }
+        }
     }
 }
