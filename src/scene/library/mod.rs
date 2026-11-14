@@ -1,5 +1,6 @@
 //! Built-in scenes, addressable by name from the command line.
 
+mod cornell;
 mod penumbra;
 mod showcase;
 
@@ -14,6 +15,7 @@ pub struct SceneEntry {
 }
 
 pub const SCENES: &[SceneEntry] = &[
+    SceneEntry { name: "cornell", description: "Cornell box with a mirror ball and a glass ball", builder: cornell::build },
     SceneEntry { name: "penumbra", description: "soft shadows from one spherical lamp in a dark room", builder: penumbra::build },
     SceneEntry { name: "showcase", description: "twenty spheres under a sky, one of each material", builder: showcase::build },
 ];
