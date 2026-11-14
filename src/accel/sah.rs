@@ -4,8 +4,12 @@ use super::bvh::{median_split, partition, Item, MAX_LEAF_SIZE};
 use crate::geometry::Aabb;
 
 const BINS: usize = 12;
-/// Cost of visiting an interior node, in units of one primitive intersection.
-const TRAVERSAL_COST: f64 = 1.0;
+/// Cost of splitting a node, in units of one primitive intersection.
+///
+/// Splitting replaces one leaf with two children, and traversal tests the box
+/// of each child it visits. A slab test costs about as much as a sphere test,
+/// so a split has to save roughly two primitive tests to pay for itself.
+const TRAVERSAL_COST: f64 = 2.0;
 
 fn bin_of(coord: f64, lo: f64, extent: f64) -> usize {
     (((coord - lo) / extent * BINS as f64) as usize).min(BINS - 1)

@@ -34,8 +34,8 @@ pub fn build() -> SceneBuilder {
     b.add(Sphere::new(Point3::new(1.5, 0.55, 2.9), 0.55, steel));
 
     b.background(Background::Solid(Color::splat(0.01)));
-    let look_from = Point3::new(0.6, 3.4, 13.0);
-    let look_at = Point3::new(0.6, 1.7, 0.0);
+    let look_from = Point3::new(1.4, 3.4, 13.0);
+    let look_at = Point3::new(1.4, 1.7, 0.0);
     b.camera(CameraSpec {
         look_from,
         look_at,

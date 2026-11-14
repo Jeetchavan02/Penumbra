@@ -24,7 +24,8 @@ pub fn build() -> SceneBuilder {
 
     for (ring, (ring_radius, sphere_radius)) in [(2.3, 0.32), (6.2, 0.42)].into_iter().enumerate() {
         for i in 0..8 {
-            let turn = (i as f64 + 0.5 * ring as f64) / 8.0;
+            // The outer ring is rotated so no sphere sits between the camera and the centre.
+            let turn = (i as f64 + 0.14 * ring as f64) / 8.0;
             let color = hue(turn + 0.1 * ring as f64);
             let material = match (i + ring) % 3 {
                 0 => Material::lambertian(color),
