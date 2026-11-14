@@ -24,13 +24,17 @@ pub struct RenderSettings {
     pub max_depth: u32,
     /// Same seed, same image, regardless of thread count.
     pub seed: u64,
+    /// Sample lights directly at every diffuse bounce (next event estimation).
+    /// Converges to the same image as plain path tracing, with far less noise
+    /// when lights are small.
+    pub direct_lighting: bool,
     /// Report progress on stderr.
     pub progress: bool,
 }
 
 impl Default for RenderSettings {
     fn default() -> Self {
-        RenderSettings { width: 400, height: 225, samples_per_pixel: 64, max_depth: 50, seed: 0, progress: false }
+        RenderSettings { width: 400, height: 225, samples_per_pixel: 64, max_depth: 50, seed: 0, direct_lighting: true, progress: false }
     }
 }
 

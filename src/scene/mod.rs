@@ -31,6 +31,8 @@ impl Background {
 pub struct Scene {
     bvh: Bvh,
     materials: Vec<Material>,
+    /// Copies of the emissive primitives, for direct light sampling.
+    lights: Vec<Primitive>,
     pub background: Background,
     pub camera: CameraSpec,
 }
@@ -55,6 +57,11 @@ impl Scene {
 
     pub fn material(&self, id: MaterialId) -> &Material {
         &self.materials[id.index()]
+    }
+
+    /// Every primitive whose material emits light.
+    pub fn lights(&self) -> &[Primitive] {
+        &self.lights
     }
 
     pub fn bvh(&self) -> &Bvh {
@@ -112,9 +119,16 @@ impl SceneBuilder {
                 "primitive refers to a material that was not registered with this builder"
             );
         }
+        let lights = self
+            .primitives
+            .iter()
+            .filter(|primitive| self.materials[primitive.material().index()].is_emissive())
+            .copied()
+            .collect();
         Scene {
             bvh: Bvh::build(self.primitives, split),
             materials: self.materials,
+            lights,
             background: self.background,
             camera: self.camera,
         }
@@ -143,6 +157,7 @@ mod tests {
         b.add(Sphere::new(Vec3::ZERO, 1.0, light));
         let scene = b.build(SplitMethod::Sah);
         assert!(scene.material(light).is_emissive());
+        assert_eq!(scene.lights().len(), 1);
         assert!(!scene.material(red).is_emissive());
         let ray = Ray::new(Vec3::new(0.0, 0.0, 5.0), Vec3::new(0.0, 0.0, -1.0));
         assert_eq!(scene.hit(&ray, Interval::new(1e-4, f64::INFINITY)).unwrap().material, light);
