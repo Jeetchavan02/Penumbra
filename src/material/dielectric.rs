@@ -30,11 +30,7 @@ impl Dielectric {
             dir.refract(hit.normal, ratio)
         };
 
-        Some(Scatter {
-            attenuation: self.tint,
-            ray: Ray::new(hit.point, out.try_normalized()?),
-            specular: true,
-        })
+        Some(Scatter { attenuation: self.tint, ray: Ray::new(hit.point, out.try_normalized()?), specular: true })
     }
 }
 

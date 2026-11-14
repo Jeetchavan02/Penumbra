@@ -86,7 +86,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
     if s.width == 0 || s.samples_per_pixel == 0 || s.max_depth == 0 {
         return Err("--width, --spp and --depth must be at least 1".to_string());
     }
-    if matches!(s.max_sample_radiance, Some(limit) if !(limit > 0.0)) {
+    if matches!(s.max_sample_radiance, Some(limit) if limit.is_nan() || limit <= 0.0) {
         return Err("--clamp must be positive".to_string());
     }
     if options.threads == Some(0) {
@@ -135,10 +135,7 @@ fn run(mut options: Options) -> Result<(), String> {
     let samples = settings.width as f64 * settings.height as f64 * settings.samples_per_pixel as f64;
     eprintln!("wrote {out} in {seconds:.2}s ({:.2}M samples/s)", samples / seconds / 1e6);
     if stats.rejected_samples > 0 {
-        eprintln!(
-            "warning: {} samples were NaN, infinite or negative and were discarded",
-            stats.rejected_samples
-        );
+        eprintln!("warning: {} samples were NaN, infinite or negative and were discarded", stats.rejected_samples);
     }
     Ok(())
 }

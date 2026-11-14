@@ -56,8 +56,8 @@ pub(super) fn split(items: &mut [Item], bbox: Aabb, centroid_bounds: Aabb) -> Op
             if count == 0 || right_count == 0 {
                 continue;
             }
-            let cost = TRAVERSAL_COST
-                + (acc.surface_area() * count as f64 + right_area * right_count as f64) / parent_area;
+            let cost =
+                TRAVERSAL_COST + (acc.surface_area() * count as f64 + right_area * right_count as f64) / parent_area;
             // A NaN cost (zero-area parent) compares false and is skipped.
             if best.map_or(cost.is_finite(), |(best_cost, ..)| cost < best_cost) {
                 best = Some((cost, axis, i));

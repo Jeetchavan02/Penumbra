@@ -16,10 +16,26 @@ pub struct SceneEntry {
 }
 
 pub const SCENES: &[SceneEntry] = &[
-    SceneEntry { name: "cornell", description: "Cornell box with a mirror ball and a glass ball", builder: cornell::build },
-    SceneEntry { name: "field", description: "several hundred small spheres; a BVH stress test", builder: field::build },
-    SceneEntry { name: "penumbra", description: "soft shadows from one spherical lamp in a dark room", builder: penumbra::build },
-    SceneEntry { name: "showcase", description: "twenty spheres under a sky, one of each material", builder: showcase::build },
+    SceneEntry {
+        name: "cornell",
+        description: "Cornell box with a mirror ball and a glass ball",
+        builder: cornell::build,
+    },
+    SceneEntry {
+        name: "field",
+        description: "several hundred small spheres; a BVH stress test",
+        builder: field::build,
+    },
+    SceneEntry {
+        name: "penumbra",
+        description: "soft shadows from one spherical lamp in a dark room",
+        builder: penumbra::build,
+    },
+    SceneEntry {
+        name: "showcase",
+        description: "twenty spheres under a sky, one of each material",
+        builder: showcase::build,
+    },
 ];
 
 /// Build a library scene by name.

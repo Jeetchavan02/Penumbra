@@ -13,7 +13,10 @@ use crate::math::{Color, Interval, Ray, Vec3};
 pub enum Background {
     Solid(Color),
     /// Vertical gradient from `horizon` (looking down) to `zenith` (looking up).
-    Sky { horizon: Color, zenith: Color },
+    Sky {
+        horizon: Color,
+        zenith: Color,
+    },
 }
 
 impl Background {

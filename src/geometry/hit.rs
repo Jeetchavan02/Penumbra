@@ -32,13 +32,7 @@ impl HitRecord {
     /// ray arrived from behind it.
     pub fn new(ray: &Ray, t: f64, point: Point3, outward_normal: Vec3, material: MaterialId) -> Self {
         let front_face = ray.dir().dot(outward_normal) < 0.0;
-        HitRecord {
-            t,
-            point,
-            normal: if front_face { outward_normal } else { -outward_normal },
-            front_face,
-            material,
-        }
+        HitRecord { t, point, normal: if front_face { outward_normal } else { -outward_normal }, front_face, material }
     }
 }
 

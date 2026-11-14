@@ -9,10 +9,7 @@ pub struct Aabb {
 
 impl Aabb {
     /// The identity for [`Aabb::union`]: contains nothing.
-    pub const EMPTY: Aabb = Aabb {
-        min: Vec3::splat(f64::INFINITY),
-        max: Vec3::splat(f64::NEG_INFINITY),
-    };
+    pub const EMPTY: Aabb = Aabb { min: Vec3::splat(f64::INFINITY), max: Vec3::splat(f64::NEG_INFINITY) };
 
     /// Smallest box containing both points, in any order.
     pub fn from_points(a: Point3, b: Point3) -> Self {

@@ -25,7 +25,12 @@ pub fn build() -> SceneBuilder {
     b.add(Quad::new(Point3::ZERO, x, z, white));
     b.add(Quad::new(Point3::new(0.0, SIZE, 0.0), x, z, white));
     b.add(Quad::new(Point3::new(0.0, 0.0, SIZE), x, y, white));
-    b.add(Quad::new(Point3::new(213.0, SIZE - 1.0, 227.0), Vec3::new(130.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 105.0), light));
+    b.add(Quad::new(
+        Point3::new(213.0, SIZE - 1.0, 227.0),
+        Vec3::new(130.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 105.0),
+        light,
+    ));
 
     let mirror = b.material(Material::metal(Color::splat(0.9), 0.0));
     let glass = b.material(Material::dielectric(1.5));

@@ -118,7 +118,8 @@ mod tests {
     fn quad_samples_integrate_to_its_solid_angle() {
         // A 2x2 square centred one unit above the origin is one face of a cube
         // seen from its centre: a sixth of the sphere.
-        let quad = Quad::new(Point3::new(-1.0, 1.0, -1.0), Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 2.0), MaterialId(0));
+        let quad =
+            Quad::new(Point3::new(-1.0, 1.0, -1.0), Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 2.0), MaterialId(0));
         let got = estimated_solid_angle(&quad.into(), Point3::ZERO);
         assert!((got - 4.0 * PI / 6.0).abs() < 0.01, "{got}");
     }

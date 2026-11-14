@@ -230,8 +230,13 @@ mod tests {
         (0..count)
             .map(|i| match i % 10 {
                 0 => Sphere::new(random_point(&mut s, 50.0), s.range(5.0, 20.0), m).into(),
-                1 => Quad::new(random_point(&mut s, 20.0), s.unit_vector() * 3.0, s.unit_vector() * 2.0 + Vec3::new(0.0, 0.1, 0.0), m)
-                    .into(),
+                1 => Quad::new(
+                    random_point(&mut s, 20.0),
+                    s.unit_vector() * 3.0,
+                    s.unit_vector() * 2.0 + Vec3::new(0.0, 0.1, 0.0),
+                    m,
+                )
+                .into(),
                 _ => Sphere::new(random_point(&mut s, 5.0), s.range(0.05, 0.5), m).into(),
             })
             .collect()
@@ -289,8 +294,7 @@ mod tests {
 
     #[test]
     fn sah_handles_coincident_centroids() {
-        let prims: Vec<Primitive> =
-            (1..=50).map(|i| Sphere::new(Vec3::ZERO, i as f64, MaterialId(0)).into()).collect();
+        let prims: Vec<Primitive> = (1..=50).map(|i| Sphere::new(Vec3::ZERO, i as f64, MaterialId(0)).into()).collect();
         let bvh = Bvh::build(prims, SplitMethod::Sah);
         assert!(bvh.hit(&Ray::new(Vec3::new(0.0, 0.0, 100.0), Vec3::new(0.0, 0.0, -1.0)), RANGE).is_some());
     }
@@ -306,8 +310,7 @@ mod tests {
     #[test]
     fn coincident_centroids_still_build() {
         // Concentric spheres cannot be separated by any spatial split.
-        let prims: Vec<Primitive> =
-            (1..=50).map(|i| Sphere::new(Vec3::ZERO, i as f64, MaterialId(0)).into()).collect();
+        let prims: Vec<Primitive> = (1..=50).map(|i| Sphere::new(Vec3::ZERO, i as f64, MaterialId(0)).into()).collect();
         let bvh = Bvh::build(prims, SplitMethod::Midpoint);
         let hit = bvh.hit(&Ray::new(Vec3::new(0.0, 0.0, 100.0), Vec3::new(0.0, 0.0, -1.0)), RANGE).unwrap();
         assert!((hit.t - 50.0).abs() < 1e-9);

@@ -95,8 +95,14 @@ fn roulette_is_unbiased_on_long_paths() {
         b.build(SplitMethod::Sah)
     };
     let mean = |seed| {
-        let settings =
-            RenderSettings { width: 32, height: 32, samples_per_pixel: 256, max_depth: 200, seed, ..RenderSettings::default() };
+        let settings = RenderSettings {
+            width: 32,
+            height: 32,
+            samples_per_pixel: 256,
+            max_depth: 200,
+            seed,
+            ..RenderSettings::default()
+        };
         let (film, stats) = render(&build(), &settings);
         assert_eq!(stats.rejected_samples, 0);
         for p in film.pixels() {

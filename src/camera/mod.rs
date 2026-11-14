@@ -62,9 +62,7 @@ impl Camera {
         assert!(spec.vfov > 0.0 && spec.vfov < 180.0, "vfov must be in (0, 180) degrees");
         assert!(spec.focus_distance > 0.0, "focus distance must be positive");
 
-        let w = (spec.look_from - spec.look_at)
-            .try_normalized()
-            .expect("camera look_from and look_at must differ");
+        let w = (spec.look_from - spec.look_at).try_normalized().expect("camera look_from and look_at must differ");
         let u = spec.up.cross(w).try_normalized().expect("camera up must not be parallel to the view direction");
         let v = w.cross(u);
 

@@ -14,10 +14,7 @@ pub struct Ray {
 impl Ray {
     /// `dir` must already be normalised.
     pub fn new(origin: Point3, dir: Vec3) -> Self {
-        debug_assert!(
-            (dir.length_squared() - 1.0).abs() < 1e-6,
-            "ray direction must be unit length, got {dir:?}"
-        );
+        debug_assert!((dir.length_squared() - 1.0).abs() < 1e-6, "ray direction must be unit length, got {dir:?}");
         Ray {
             origin,
             dir,
