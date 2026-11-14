@@ -9,3 +9,4 @@ pub mod material;
 pub mod accel;
 pub mod camera;
 pub mod scene;
+pub mod render;
