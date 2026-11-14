@@ -11,6 +11,9 @@ use crate::scene::Scene;
 /// through real geometry at the scales the scene library uses.
 pub const RAY_EPSILON: f64 = 1e-4;
 
+/// Bounces a path always gets before Russian roulette may end it.
+const ROULETTE_START: u32 = 4;
+
 /// Radiance arriving at the origin of `ray` from the direction it points in.
 ///
 /// Iterative rather than recursive: `throughput` carries the product of all
@@ -19,7 +22,7 @@ pub fn radiance(scene: &Scene, mut ray: Ray, settings: &RenderSettings, sampler:
     let mut radiance = Color::ZERO;
     let mut throughput = Color::ONE;
 
-    for _ in 0..settings.max_depth {
+    for bounce in 0..settings.max_depth {
         let Some(hit) = scene.hit(&ray, Interval::new(RAY_EPSILON, f64::INFINITY)) else {
             radiance += throughput * scene.background.radiance(ray.dir());
             break;
@@ -32,6 +35,16 @@ pub fn radiance(scene: &Scene, mut ray: Ray, settings: &RenderSettings, sampler:
         };
         throughput *= scatter.attenuation;
         ray = scatter.ray;
+
+        // Russian roulette: end dim paths at random, and divide the survivors
+        // by their survival probability so the estimate stays unbiased.
+        if bounce >= ROULETTE_START {
+            let survive = throughput.max_component().min(1.0);
+            if sampler.uniform() >= survive {
+                break;
+            }
+            throughput /= survive;
+        }
     }
     radiance
 }

@@ -68,3 +68,43 @@ fn clear_glass_conserves_energy() {
         assert!((p.x - 1.0).abs() < 1e-3, "pixel {i} = {p:?}");
     }
 }
+
+/// Two large facing diffuse plates of albedo 0.9 trap paths for many bounces,
+/// well past the point where Russian roulette starts.
+///
+/// Roulette may only end paths, never brighten a pixel beyond the environment,
+/// and two independent estimates of the image mean must agree.
+#[test]
+fn roulette_is_unbiased_on_long_paths() {
+    use penumbra::geometry::Quad;
+    use penumbra::math::Vec3;
+
+    let build = || {
+        let mut b = Scene::builder();
+        let wall = b.material(Material::lambertian(Color::splat(0.9)));
+        b.add(Quad::new(Point3::new(-5.0, -1.0, -5.0), Vec3::new(0.0, 0.0, 10.0), Vec3::new(10.0, 0.0, 0.0), wall));
+        b.add(Quad::new(Point3::new(-5.0, 1.0, -5.0), Vec3::new(10.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 10.0), wall));
+        b.background(Background::Solid(Color::ONE));
+        b.camera(CameraSpec {
+            look_from: Point3::new(0.0, 0.0, 3.0),
+            aspect_ratio: 1.0,
+            vfov: 70.0,
+            focus_distance: 3.0,
+            ..CameraSpec::default()
+        });
+        b.build(SplitMethod::Sah)
+    };
+    let mean = |seed| {
+        let settings =
+            RenderSettings { width: 32, height: 32, samples_per_pixel: 256, max_depth: 200, seed, ..RenderSettings::default() };
+        let (film, stats) = render(&build(), &settings);
+        assert_eq!(stats.rejected_samples, 0);
+        for p in film.pixels() {
+            assert!(p.x <= 1.0 + 1e-9, "roulette must never create energy: {p:?}");
+        }
+        film.mean().x
+    };
+    let (a, b) = (mean(1), mean(2));
+    assert!((a - b).abs() < 0.01, "independent estimates disagree: {a} vs {b}");
+    assert!(a > 0.3 && a < 1.0, "corridor should be dimmer than the furnace but lit: {a}");
+}
