@@ -6,6 +6,7 @@ description = "A CPU path tracer written from scratch in Rust"
 repository = "https://github.com/Jeetchavan02/Penumbra"
 
 [dependencies]
+rand = { version = "0.9", default-features = false, features = ["small_rng"] }
 
 [profile.release]
 opt-level = 3
