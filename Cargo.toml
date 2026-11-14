@@ -8,6 +8,7 @@ repository = "https://github.com/Jeetchavan02/Penumbra"
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
 rand = { version = "0.9", default-features = false, features = ["small_rng"] }
+rayon = "1"
 
 [profile.release]
 opt-level = 3
