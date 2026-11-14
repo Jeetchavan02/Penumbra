@@ -5,8 +5,10 @@ use crate::math::{Interval, Point3, Ray};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SplitMethod {
     /// Cut the longest axis of the centroid bounds at its spatial midpoint.
-    #[default]
     Midpoint,
+    /// Binned surface area heuristic: minimise the expected traversal cost.
+    #[default]
+    Sah,
 }
 
 /// Largest number of primitives a leaf may hold.
@@ -161,7 +163,6 @@ fn build_node(items: &mut [Item], first: usize, nodes: &mut Vec<Node>, method: S
 /// Partition `items` in place and return `(axis, split index)`, or `None` to
 /// make a leaf. The split index is always strictly inside the slice.
 fn choose_split(items: &mut [Item], bbox: Aabb, method: SplitMethod, depth: usize) -> Option<(usize, usize)> {
-    let _ = bbox;
     let n = items.len();
     if n <= 1 {
         return None;
@@ -186,6 +187,7 @@ fn choose_split(items: &mut [Item], bbox: Aabb, method: SplitMethod, depth: usiz
             // Rounding can put everything on one side of the pivot.
             Some((axis, if mid == 0 || mid == n { median_split(items, axis) } else { mid }))
         }
+        SplitMethod::Sah => super::sah::split(items, bbox, centroid_bounds),
     }
 }
 
@@ -276,6 +278,21 @@ mod tests {
         for count in [1, 2, 5, 37, 400] {
             assert_matches_brute_force(SplitMethod::Midpoint, count);
         }
+    }
+
+    #[test]
+    fn sah_matches_brute_force() {
+        for count in [1, 2, 5, 37, 400] {
+            assert_matches_brute_force(SplitMethod::Sah, count);
+        }
+    }
+
+    #[test]
+    fn sah_handles_coincident_centroids() {
+        let prims: Vec<Primitive> =
+            (1..=50).map(|i| Sphere::new(Vec3::ZERO, i as f64, MaterialId(0)).into()).collect();
+        let bvh = Bvh::build(prims, SplitMethod::Sah);
+        assert!(bvh.hit(&Ray::new(Vec3::new(0.0, 0.0, 100.0), Vec3::new(0.0, 0.0, -1.0)), RANGE).is_some());
     }
 
     #[test]
