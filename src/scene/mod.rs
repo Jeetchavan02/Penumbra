@@ -1,5 +1,7 @@
 //! The immutable world a render reads from.
 
+pub mod library;
+
 use crate::accel::{Bvh, SplitMethod};
 use crate::camera::CameraSpec;
 use crate::geometry::{HitRecord, Hittable, MaterialId, Primitive};
