@@ -1,10 +1,12 @@
 //! Surface response: how a ray continues after a hit, and what the surface emits.
 
 mod dielectric;
+mod emissive;
 mod lambertian;
 mod metal;
 
 pub use dielectric::Dielectric;
+pub use emissive::Emissive;
 pub use lambertian::Lambertian;
 pub use metal::Metal;
 
@@ -30,6 +32,7 @@ pub enum Material {
     Lambertian(Lambertian),
     Metal(Metal),
     Dielectric(Dielectric),
+    Emissive(Emissive),
 }
 
 impl Material {
@@ -47,6 +50,22 @@ impl Material {
         Material::Dielectric(Dielectric { ior, tint: Color::ONE })
     }
 
+    pub fn emissive(radiance: Color) -> Self {
+        Material::Emissive(Emissive { radiance })
+    }
+
+    /// Radiance the surface emits on its own. Zero for everything but lights.
+    pub fn emitted(&self) -> Color {
+        match self {
+            Material::Emissive(m) => m.radiance,
+            _ => Color::ZERO,
+        }
+    }
+
+    pub fn is_emissive(&self) -> bool {
+        matches!(self, Material::Emissive(_))
+    }
+
     /// Continue the path, or return `None` if the ray is absorbed.
     ///
     /// Inputs are borrowed read-only; the sampler is the only mutable state and
@@ -56,6 +75,7 @@ impl Material {
             Material::Lambertian(m) => m.scatter(hit, sampler),
             Material::Metal(m) => m.scatter(ray_in, hit, sampler),
             Material::Dielectric(m) => m.scatter(ray_in, hit, sampler),
+            Material::Emissive(_) => None,
         }
     }
 }
@@ -175,5 +195,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn lights_emit_and_do_not_scatter() {
+        let light = Material::emissive(Color::splat(4.0));
+        let (ray, hit) = hit_from(Vec3::new(0.0, -1.0, 0.0));
+        assert!(light.scatter(&ray, &hit, &mut Sampler::new(1)).is_none());
+        assert_eq!(light.emitted(), Color::splat(4.0));
+        assert!(light.is_emissive());
+        assert_eq!(Material::lambertian(Color::ONE).emitted(), Color::ZERO);
     }
 }
