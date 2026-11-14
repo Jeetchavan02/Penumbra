@@ -2,6 +2,8 @@
 
 mod aabb;
 mod hit;
+mod sphere;
 
 pub use aabb::Aabb;
 pub use hit::{HitRecord, Hittable, MaterialId};
+pub use sphere::Sphere;
