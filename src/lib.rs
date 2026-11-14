@@ -4,3 +4,4 @@
 //! can build scenes and render them without going through the CLI.
 
 pub mod math;
+pub mod geometry;
