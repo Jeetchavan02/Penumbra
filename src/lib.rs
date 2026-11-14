@@ -7,3 +7,4 @@ pub mod math;
 pub mod geometry;
 pub mod material;
 pub mod accel;
+pub mod camera;
