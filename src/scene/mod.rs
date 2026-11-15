@@ -7,6 +7,7 @@ use crate::camera::CameraSpec;
 use crate::geometry::{HitRecord, Hittable, MaterialId, Primitive};
 use crate::material::Material;
 use crate::math::{Color, Interval, Ray, Vec3};
+use crate::mesh::Mesh;
 
 /// Radiance arriving from rays that leave the scene.
 #[derive(Debug, Clone, Copy)]
@@ -103,6 +104,12 @@ impl SceneBuilder {
 
     pub fn add(&mut self, primitive: impl Into<Primitive>) -> &mut Self {
         self.primitives.push(primitive.into());
+        self
+    }
+
+    /// Add every triangle of `mesh` with one material.
+    pub fn add_mesh(&mut self, mesh: &Mesh, material: MaterialId) -> &mut Self {
+        self.primitives.extend(mesh.triangles(material).map(Primitive::from));
         self
     }
 
