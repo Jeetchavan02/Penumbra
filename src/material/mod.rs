@@ -2,16 +2,20 @@
 
 mod dielectric;
 mod emissive;
+mod glossy;
 mod lambertian;
 mod metal;
 
 pub use dielectric::Dielectric;
 pub use emissive::Emissive;
+pub use glossy::Glossy;
 pub use lambertian::Lambertian;
 pub use metal::Metal;
 
 use crate::geometry::HitRecord;
-use crate::math::{Color, Ray, Sampler};
+use std::f64::consts::PI;
+
+use crate::math::{Color, Ray, Sampler, Vec3};
 
 /// The outcome of a scattering event. Owned, plain data: nothing here borrows
 /// from the incoming ray, the hit or the material.
@@ -23,6 +27,20 @@ pub struct Scatter {
     /// True when the direction was chosen from a delta-like lobe (mirror,
     /// glass). Direct light sampling is skipped for these bounces.
     pub specular: bool,
+    /// Solid-angle density with which `ray`'s direction was chosen. Only
+    /// meaningful when `specular` is false.
+    pub pdf: f64,
+}
+
+/// A material's response to light arriving from one given direction.
+#[derive(Debug, Clone, Copy)]
+pub struct Bsdf {
+    /// The BSDF multiplied by the cosine at the surface.
+    pub value: Color,
+    /// Solid-angle density with which `scatter` would have chosen that
+    /// direction. Comparing it with a light's density is what multiple
+    /// importance sampling is built on.
+    pub pdf: f64,
 }
 
 /// The closed set of materials. `Copy` plain data, so it is `Send + Sync` for
@@ -33,6 +51,7 @@ pub enum Material {
     Metal(Metal),
     Dielectric(Dielectric),
     Emissive(Emissive),
+    Glossy(Glossy),
 }
 
 impl Material {
@@ -42,6 +61,12 @@ impl Material {
 
     pub fn metal(albedo: Color, fuzz: f64) -> Self {
         Material::Metal(Metal { albedo, fuzz: fuzz.clamp(0.0, 1.0) })
+    }
+
+    /// Rough reflective surface that can be importance sampled toward lights.
+    /// `roughness` runs from 0 (mirror-like) to 1 (nearly diffuse).
+    pub fn glossy(color: Color, roughness: f64) -> Self {
+        Material::Glossy(Glossy::new(color, roughness))
     }
 
     /// Clear glass-like material with the given refractive index.
@@ -76,6 +101,24 @@ impl Material {
             Material::Metal(m) => m.scatter(ray_in, hit, sampler),
             Material::Dielectric(m) => m.scatter(ray_in, hit, sampler),
             Material::Emissive(_) => None,
+            Material::Glossy(m) => m.scatter(ray_in, hit, sampler),
+        }
+    }
+
+    /// How strongly this surface sends light arriving from `wi` back along
+    /// `ray_in`, and how likely `scatter` was to pick `wi`.
+    ///
+    /// `None` when no light is transferred: `wi` is below the surface, or the
+    /// material is a mirror, glass or a light, whose lobes are single
+    /// directions that an independently chosen `wi` never matches.
+    pub fn eval(&self, ray_in: &Ray, hit: &HitRecord, wi: Vec3) -> Option<Bsdf> {
+        match self {
+            Material::Lambertian(m) => {
+                let cos = hit.normal.dot(wi);
+                (cos > 0.0).then(|| Bsdf { value: m.albedo * (cos / PI), pdf: cos / PI })
+            }
+            Material::Glossy(m) => m.eval(-ray_in.dir(), hit.normal, wi),
+            Material::Metal(_) | Material::Dielectric(_) | Material::Emissive(_) => None,
         }
     }
 }
@@ -205,5 +248,29 @@ mod tests {
         assert_eq!(light.emitted(), Color::splat(4.0));
         assert!(light.is_emissive());
         assert_eq!(Material::lambertian(Color::ONE).emitted(), Color::ZERO);
+    }
+
+    #[test]
+    fn lambertian_sample_and_eval_agree() {
+        let m = Material::lambertian(Color::new(0.2, 0.5, 0.8));
+        let (ray, hit) = hit_from(Vec3::new(1.0, -1.0, 0.0));
+        let mut sampler = Sampler::new(3);
+        for _ in 0..1_000 {
+            let s = m.scatter(&ray, &hit, &mut sampler).unwrap();
+            let bsdf = m.eval(&ray, &hit, s.ray.dir()).unwrap();
+            assert!((bsdf.pdf - s.pdf).abs() < 1e-12);
+            assert!((bsdf.value / bsdf.pdf - s.attenuation).length() < 1e-12);
+        }
+        assert!(m.eval(&ray, &hit, Vec3::new(0.0, -1.0, 0.0)).is_none());
+    }
+
+    #[test]
+    fn delta_materials_cannot_be_evaluated() {
+        let (ray, hit) = hit_from(Vec3::new(1.0, -1.0, 0.0));
+        let up = Vec3::new(0.0, 1.0, 0.0);
+        for m in [Material::metal(Color::ONE, 0.0), Material::dielectric(1.5), Material::emissive(Color::ONE)] {
+            assert!(m.eval(&ray, &hit, up).is_none());
+        }
+        assert!(Material::glossy(Color::ONE, 0.5).eval(&ray, &hit, up).is_some());
     }
 }

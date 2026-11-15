@@ -89,7 +89,41 @@ fn area_sample(origin: Point3, point: Point3, normal: Vec3, area: f64) -> Option
     Some(LightSample { dir, distance, pdf: dist_sq / (cos_light * area) })
 }
 
+/// Density that a flat light of the given `area`, sampled uniformly, assigns
+/// to the direction `dir` from `origin`. Zero if the ray does not reach it.
+fn area_pdf(shape: &impl Hittable, normal: Vec3, area: f64, origin: Point3, dir: Vec3) -> f64 {
+    let Some(hit) = shape.hit(&Ray::new(origin, dir), Interval::new(0.0, f64::INFINITY)) else {
+        return 0.0;
+    };
+    let cos_light = normal.dot(dir).abs();
+    if cos_light < 1e-9 {
+        return 0.0;
+    }
+    hit.t * hit.t / (cos_light * area)
+}
+
 impl Primitive {
+    /// The density with which [`Primitive::sample_toward`] would have chosen
+    /// `dir` from `origin`, for a `dir` already known to reach a sphere. Zero
+    /// if it never would: the ray misses a flat light, or `origin` is inside
+    /// a sphere.
+    pub fn pdf_toward(&self, origin: Point3, dir: Vec3) -> f64 {
+        match self {
+            Primitive::Sphere(s) => {
+                let dist_sq = (s.center - origin).length_squared();
+                let radius_sq = s.radius * s.radius;
+                if dist_sq <= radius_sq * (1.0 + 1e-9) {
+                    return 0.0;
+                }
+                let sin_sq_max = radius_sq / dist_sq;
+                let one_minus_cos_max = sin_sq_max / (1.0 + (1.0 - sin_sq_max).sqrt());
+                1.0 / (TAU * one_minus_cos_max)
+            }
+            Primitive::Quad(q) => area_pdf(q, q.normal, q.area, origin, dir),
+            Primitive::Triangle(t) => area_pdf(t, t.face_normal(), t.area(), origin, dir),
+        }
+    }
+
     pub fn sample_toward(&self, origin: Point3, sampler: &mut Sampler) -> Option<LightSample> {
         match self {
             Primitive::Sphere(s) => s.sample_toward(origin, sampler),
@@ -118,6 +152,9 @@ mod tests {
             assert!(ls.pdf > 0.0 && ls.pdf.is_finite());
             assert!((ls.dir.length() - 1.0).abs() < 1e-9);
             let hit = shape.hit(&Ray::new(origin, ls.dir), RANGE).expect("sampled direction must reach the light");
+            // Evaluating the density afterwards gives the value sampling reported.
+            let pdf = shape.pdf_toward(origin, ls.dir);
+            assert!((pdf - ls.pdf).abs() < 1e-6 * ls.pdf, "{pdf} vs {}", ls.pdf);
             assert!((hit.t - ls.distance).abs() < 1e-6 * ls.distance.max(1.0));
             sum += 1.0 / ls.pdf;
         }

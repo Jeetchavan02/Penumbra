@@ -113,8 +113,9 @@ impl Hittable for Bvh {
             if node.bbox.hit(ray, Interval::new(t.min, closest)) {
                 if node.count > 0 {
                     let first = node.offset as usize;
-                    for prim in &self.primitives[first..first + node.count as usize] {
-                        if let Some(hit) = prim.hit(ray, Interval::new(t.min, closest)) {
+                    for index in first..first + node.count as usize {
+                        if let Some(mut hit) = self.primitives[index].hit(ray, Interval::new(t.min, closest)) {
+                            hit.primitive = index as u32;
                             closest = hit.t;
                             best = Some(hit);
                         }
@@ -271,6 +272,9 @@ mod tests {
             match (bvh.hit(&ray, RANGE), brute_force(&prims, &ray)) {
                 (Some(a), Some(b)) => {
                     assert!((a.t - b.t).abs() < 1e-9, "t mismatch: {} vs {}", a.t, b.t);
+                    // The hit names the primitive it came from.
+                    let again = bvh.primitives()[a.primitive as usize].hit(&ray, RANGE).unwrap();
+                    assert!(again.t <= a.t + 1e-9);
                     hits += 1;
                 }
                 (None, None) => {}

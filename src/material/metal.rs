@@ -19,6 +19,6 @@ impl Metal {
         if dir.dot(hit.normal) <= 0.0 {
             return None;
         }
-        Some(Scatter { attenuation: self.albedo, ray: Ray::new(hit.point, dir), specular: true })
+        Some(Scatter { attenuation: self.albedo, ray: Ray::new(hit.point, dir), specular: true, pdf: 0.0 })
     }
 }

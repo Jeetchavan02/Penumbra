@@ -3,6 +3,7 @@
 mod cornell;
 mod field;
 mod penumbra;
+mod plates;
 mod showcase;
 mod studio;
 
@@ -38,6 +39,11 @@ pub const SCENES: &[SceneEntry] = &[
         name: "penumbra",
         description: "soft shadows from one spherical lamp in a dark room",
         builder: penumbra::build,
+    },
+    SceneEntry {
+        name: "plates",
+        description: "four glossy plates and four lights; the test for multiple importance sampling",
+        builder: plates::build,
     },
     SceneEntry {
         name: "showcase",

@@ -114,3 +114,22 @@ fn roulette_is_unbiased_on_long_paths() {
     assert!((a - b).abs() < 0.01, "independent estimates disagree: {a} vs {b}");
     assert!(a > 0.3 && a < 1.0, "corridor should be dimmer than the furnace but lit: {a}");
 }
+
+#[test]
+fn glossy_surfaces_never_create_energy() {
+    // The single-scattering microfacet model loses the light that would
+    // bounce between facets, more so as roughness grows. It must never gain.
+    // Measured image means: 1.000, 0.952 and 0.754 at roughness 0.05, 0.5, 1.
+    let mean_at = |roughness: f64| {
+        let film = furnace(Material::glossy(Color::ONE, roughness));
+        for (i, p) in film.pixels().iter().enumerate() {
+            assert!(p.x <= 1.0 + 1e-9, "roughness {roughness}, pixel {i} = {p:?}");
+        }
+        film.mean().x
+    };
+    let (smooth, medium, rough) = (mean_at(0.05), mean_at(0.5), mean_at(1.0));
+    assert!(smooth > 0.995, "a nearly smooth white surface is nearly lossless: {smooth}");
+    assert!(smooth >= medium && medium >= rough, "loss grows with roughness: {smooth} {medium} {rough}");
+    assert!(medium > 0.94, "moderate roughness loses little: {medium}");
+    assert!(rough > 0.7, "loss at full roughness is large but bounded: {rough}");
+}

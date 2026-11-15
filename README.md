@@ -10,7 +10,13 @@ physically based renderer reproduces without being told to.
 ![A gold trefoil knot in a studio](renders/knot.png)
 
 *`knot` scene: 98,304 triangles generated from a formula, 960x540, 1024
-samples per pixel, 40 seconds on 10 cores.*
+samples per pixel, 55 seconds on 10 cores.*
+
+![Four glossy plates reflecting four lights](renders/plates.png)
+
+*`plates` scene, 512 samples per pixel: the standard test for multiple
+importance sampling. Smooth plate at the back, rough at the front; lights from
+tiny to large.*
 
 ![Three spheres at increasing heights casting progressively softer shadows](renders/penumbra.png)
 
@@ -37,7 +43,7 @@ cargo run --release -- --obj path/to/model.obj --finish clay --turn 30
 ```
 
 ```
---scene <NAME>     penumbra, knot, cornell, showcase or field [default: penumbra]
+--scene <NAME>     penumbra, knot, plates, cornell, showcase or field [default: penumbra]
 --list             list scenes
 --obj <PATH>       render an OBJ file in a studio instead of a named scene
 --finish <NAME>    surface for --obj: clay, gold or glass  [default: clay]
@@ -48,15 +54,15 @@ cargo run --release -- --obj path/to/model.obj --finish clay --turn 30
 --seed <N>         same seed, same image                   [default: 0]
 --out <PATH>       output PNG                              [default: <scene>.png]
 --bvh <METHOD>     sah or midpoint                         [default: sah]
---no-direct        plain path tracing, no light sampling
+--lighting <MODE>  mis, light or bsdf                       [default: mis]
 --clamp <VALUE>    clamp sample radiance to remove fireflies (biased)
 --threads <N>      worker threads                          [default: all cores]
 ```
 
 ## What it does
 
-- Spheres, parallelograms and triangle meshes; diffuse, metal, glass and
-  emissive materials.
+- Spheres, parallelograms and triangle meshes; diffuse, mirror, glass,
+  emissive and glossy (GGX microfacet) materials.
 - A hand-written OBJ reader (no parser dependency). Meshes without normals
   are smoothed, except across edges sharper than 40 degrees, so a cube stays
   a cube.
@@ -64,32 +70,49 @@ cargo run --release -- --obj path/to/model.obj --finish clay --turn 30
 - Flat, stack-traversed BVH with midpoint or binned-SAH construction.
 - Thin-lens camera with depth of field.
 - Iterative path tracing with Russian roulette.
-- Next event estimation: every diffuse bounce samples a light directly, by
-  solid angle for spheres and by area for quads and triangles, so a mesh can
-  be a light.
+- Multiple importance sampling: every rough bounce takes one sample aimed at
+  a light and one from the surface's own reflection lobe, and weighs them with
+  the power heuristic. Lights are sampled by solid angle for spheres and by
+  area for quads and triangles, so a mesh can be a light.
 - Parallel over scanlines, and deterministic: the output is bit-identical for
   any thread count.
 - sRGB output.
 
 The design decisions and their reasons are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Why light sampling matters here
+## Why two sampling strategies
 
-Same scene, same 64 samples per pixel, same render time to within a factor of
-two. Left: plain path tracing, which only finds the lamp when a random bounce
-happens to hit it. Right: direct light sampling.
+There are two ways to find a light from a surface: aim at the light, or follow
+the surface's reflection and see what it hits. Each fails somewhere. All three
+images below use 16 samples per pixel.
 
-| `--no-direct` | default |
+| follow the reflection (`--lighting bsdf`) | aim at lights (`--lighting light`) | both, weighted (`--lighting mis`) |
+|---|---|---|
+| ![Reflection sampling only](renders/plates_bsdf_16spp.png) | ![Light sampling only](renders/plates_light_16spp.png) | ![Multiple importance sampling](renders/plates_mis_16spp.png) |
+
+- **Following the reflection** finds the large light in the smooth plate and
+  almost never finds the tiny one. Everything diffuse is noise.
+- **Aiming at lights** fixes the diffuse surfaces and the small lights, but
+  the large light in the smooth plates (right side, top two plates) turns to
+  speckle: a random point on a big light rarely lies in a narrow reflection.
+- **Weighting both** by how likely each was to produce the direction is clean
+  in every corner, at the same cost as aiming at lights alone (0.22 s each).
+
+All three converge to the same image. That is not taken on trust:
+`tests/direct_lighting.rs` renders a scene with diffuse, glossy, mirror and
+glass surfaces in each mode and requires the image means to agree within 2%
+per channel.
+
+The effect on a scene with one small lamp and no glossy surfaces, at 64
+samples per pixel:
+
+| `--lighting bsdf` | default |
 |---|---|
-| ![Plain path tracing at 64 spp](renders/compare_path_tracing_64spp.png) | ![Direct lighting at 64 spp](renders/compare_direct_lighting_64spp.png) |
-
-Both converge to the same image. That is not taken on trust:
-`tests/direct_lighting.rs` renders one scene both ways and requires the image
-means to agree within 2% per channel.
+| ![Plain path tracing at 64 spp](renders/compare_path_tracing_64spp.png) | ![With light sampling at 64 spp](renders/compare_direct_lighting_64spp.png) |
 
 ## How it is checked
 
-115 tests (`cargo test`). The ones that carry the most weight:
+124 tests (`cargo test`). The ones that carry the most weight:
 
 - **Furnace tests.** A sphere inside a uniformly white environment must look
   exactly as bright as its albedo; a white diffuse sphere, a perfect mirror and
@@ -104,8 +127,12 @@ means to agree within 2% per channel.
   last bit; nine kinds of malformed input each report the right line.
 - **Determinism.** One thread and seven threads produce identical pixels.
   Midpoint and SAH trees produce identical pixels.
-- **Light sampling.** The estimated solid angle of a sphere and of a quad match
-  their closed forms.
+- **Light sampling.** The estimated solid angle of a sphere, a quad and a
+  triangle match their closed forms, and evaluating a light's density gives
+  the value its sampler reported.
+- **Glossy sampling.** The fraction of reflection samples landing in a cone
+  equals the integral of the evaluated density over that cone, and no sample
+  ever carries a weight above 1.
 - **No silent NaN.** Every sample is checked before it is accumulated; rejected
   samples are counted and the CLI warns if the count is not zero. It is zero in
   every scene and test here.
@@ -138,9 +165,13 @@ point of the tree.
 
 ## Limitations
 
-- No multiple importance sampling. Rough metals are treated as mirrors for
-  light sampling, and a shading point inside a spherical light gets no direct
-  light.
+- The glossy material models single scattering only, so it darkens as
+  roughness rises. In the furnace test image a white glossy sphere dims the
+  image mean by 0% at roughness 0.05, 5% at 0.5 and 25% at 1.0.
+- The older `metal` material with non-zero fuzz is still treated as a mirror
+  for light sampling. Use `glossy` for rough reflectors.
+- Lights are chosen uniformly, which wastes samples in scenes with many
+  lights of very different brightness.
 - Caustics are found only by chance, so they are noisy. The reference renders
   of `penumbra` and `cornell` use `--clamp 8`, which removes the resulting
   fireflies at the cost of slightly darker caustics.
