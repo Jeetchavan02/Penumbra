@@ -15,6 +15,34 @@ use crate::camera::Camera;
 use crate::math::{Color, Sampler};
 use crate::scene::Scene;
 
+/// Strategy for connecting paths to light sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Lighting {
+    /// Plain path tracing: a light contributes only when a scattered ray
+    /// happens to hit it. Hopeless for small lights.
+    BsdfOnly,
+    /// Next event estimation: every rough bounce aims one ray at a light.
+    /// Poor for large lights seen in smooth glossy surfaces.
+    LightOnly,
+    /// Both of the above at every bounce, weighted by the power heuristic so
+    /// that whichever strategy suits the situation dominates.
+    #[default]
+    Mis,
+}
+
+impl Lighting {
+    pub const NAMES: &'static [&'static str] = &["mis", "light", "bsdf"];
+
+    pub fn from_name(name: &str) -> Option<Lighting> {
+        match name {
+            "mis" => Some(Lighting::Mis),
+            "light" => Some(Lighting::LightOnly),
+            "bsdf" => Some(Lighting::BsdfOnly),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderSettings {
     pub width: u32,
@@ -24,10 +52,8 @@ pub struct RenderSettings {
     pub max_depth: u32,
     /// Same seed, same image, regardless of thread count.
     pub seed: u64,
-    /// Sample lights directly at every diffuse bounce (next event estimation).
-    /// Converges to the same image as plain path tracing, with far less noise
-    /// when lights are small.
-    pub direct_lighting: bool,
+    /// How light sources are found. Every mode converges to the same image.
+    pub lighting: Lighting,
     /// Scale down any sample brighter than this. Trades a little lost energy
     /// (bias) for the removal of fireflies from rare, very bright paths such
     /// as caustics. `None` keeps the estimate unbiased.
@@ -44,7 +70,7 @@ impl Default for RenderSettings {
             samples_per_pixel: 64,
             max_depth: 50,
             seed: 0,
-            direct_lighting: true,
+            lighting: Lighting::default(),
             max_sample_radiance: None,
             progress: false,
         }

@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use penumbra::accel::SplitMethod;
 use penumbra::mesh::load_obj;
-use penumbra::render::{render, RenderSettings};
+use penumbra::render::{render, Lighting, RenderSettings};
 use penumbra::scene::library::{self, Finish};
 
 const USAGE: &str = "\
@@ -27,7 +27,8 @@ OPTIONS:
     --seed <N>         Random seed; the same seed gives the same image [default: 0]
     --out <PATH>       Output PNG [default: <scene or model name>.png]
     --bvh <METHOD>     BVH split method: sah or midpoint [default: sah]
-    --no-direct        Disable direct light sampling (plain path tracing)
+    --lighting <MODE>  How lights are found: mis, light or bsdf [default: mis]
+    --no-direct        Same as --lighting bsdf (plain path tracing)
     --clamp <VALUE>    Clamp each sample's radiance to remove fireflies (biased)
     --threads <N>      Worker threads [default: all cores]
     --quiet            No progress output
@@ -87,7 +88,13 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
             "--seed" => options.settings.seed = parse_value(&flag, args.next())?,
             "--clamp" => options.settings.max_sample_radiance = Some(parse_value(&flag, args.next())?),
             "--threads" => options.threads = Some(parse_value(&flag, args.next())?),
-            "--no-direct" => options.settings.direct_lighting = false,
+            "--no-direct" => options.settings.lighting = Lighting::BsdfOnly,
+            "--lighting" => {
+                let name: String = parse_value(&flag, args.next())?;
+                options.settings.lighting = Lighting::from_name(&name).ok_or_else(|| {
+                    format!("unknown lighting mode: {name} (expected one of {})", Lighting::NAMES.join(", "))
+                })?;
+            }
             "--quiet" => options.settings.progress = false,
             "--bvh" => {
                 options.split = match parse_value::<String>(&flag, args.next())?.as_str() {

@@ -6,7 +6,7 @@ use penumbra::geometry::Sphere;
 use penumbra::material::Material;
 use penumbra::math::{Color, Point3};
 use penumbra::mesh::{parse_obj, Mesh};
-use penumbra::render::{render, Film, RenderSettings};
+use penumbra::render::{render, Film, Lighting, RenderSettings};
 use penumbra::scene::{Background, Scene};
 
 /// A sphere approximated by subdividing an octahedron `levels` times.
@@ -125,7 +125,7 @@ fn an_emissive_mesh_lights_the_scene_the_same_with_and_without_light_sampling() 
     // A two-triangle lamp over a floor quad written as OBJ.
     let lamp = parse_obj("v -1 3 -1\nv 1 3 -1\nv 1 3 1\nv -1 3 1\nf 1 2 3 4\n").unwrap();
     let floor = parse_obj("v -6 0 -6\nv -6 0 6\nv 6 0 6\nv 6 0 -6\nf 1 2 3 4\n").unwrap();
-    let mean = |direct_lighting: bool, samples_per_pixel: u32| {
+    let mean = |lighting: Lighting, samples_per_pixel: u32| {
         let mut b = Scene::builder();
         let light = b.material(Material::emissive(Color::splat(8.0)));
         let grey = b.material(Material::lambertian(Color::splat(0.6)));
@@ -140,17 +140,11 @@ fn an_emissive_mesh_lights_the_scene_the_same_with_and_without_light_sampling() 
         });
         let scene = b.build(SplitMethod::Sah);
         assert_eq!(scene.lights().len(), 2);
-        let settings = RenderSettings {
-            width: 40,
-            height: 40,
-            samples_per_pixel,
-            direct_lighting,
-            seed: 4,
-            ..RenderSettings::default()
-        };
+        let settings =
+            RenderSettings { width: 40, height: 40, samples_per_pixel, lighting, seed: 4, ..RenderSettings::default() };
         render(&scene, &settings).0.mean().x
     };
-    let (reference, sampled) = (mean(false, 2000), mean(true, 300));
+    let (reference, sampled) = (mean(Lighting::BsdfOnly, 2000), mean(Lighting::Mis, 300));
     assert!(reference > 0.02, "scene should be lit: {reference}");
     assert!((reference - sampled).abs() / reference < 0.02, "reference {reference:.5}, direct {sampled:.5}");
 }
