@@ -25,14 +25,27 @@ pub struct HitRecord {
     /// True when the ray struck the outward-facing side of the surface.
     pub front_face: bool,
     pub material: MaterialId,
+    /// Index of the primitive that was hit, in the scene's primitive array.
+    /// Filled in by the BVH; [`HitRecord::NO_PRIMITIVE`] for a shape tested on
+    /// its own.
+    pub primitive: u32,
 }
 
 impl HitRecord {
+    pub const NO_PRIMITIVE: u32 = u32::MAX;
+
     /// `outward_normal` is the unit geometric normal; it is flipped here if the
     /// ray arrived from behind it.
     pub fn new(ray: &Ray, t: f64, point: Point3, outward_normal: Vec3, material: MaterialId) -> Self {
         let front_face = ray.dir().dot(outward_normal) < 0.0;
-        HitRecord { t, point, normal: if front_face { outward_normal } else { -outward_normal }, front_face, material }
+        HitRecord {
+            t,
+            point,
+            normal: if front_face { outward_normal } else { -outward_normal },
+            front_face,
+            material,
+            primitive: Self::NO_PRIMITIVE,
+        }
     }
 
     /// For surfaces whose shading normal differs from their geometry, such as

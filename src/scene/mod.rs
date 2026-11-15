@@ -65,6 +65,11 @@ impl Scene {
         &self.materials[id.index()]
     }
 
+    /// The primitive a hit refers to through [`HitRecord::primitive`].
+    pub fn primitive(&self, index: u32) -> &Primitive {
+        &self.bvh.primitives()[index as usize]
+    }
+
     /// Every primitive whose material emits light.
     pub fn lights(&self) -> &[Primitive] {
         &self.lights
