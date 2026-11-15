@@ -29,7 +29,7 @@ impl Finish {
     fn material(self) -> Material {
         match self {
             Finish::Clay => Material::lambertian(Color::new(0.74, 0.62, 0.52)),
-            Finish::Gold => Material::metal(Color::new(1.0, 0.77, 0.34), 0.12),
+            Finish::Gold => Material::glossy(Color::new(1.0, 0.77, 0.34), 0.3),
             Finish::Glass => Material::dielectric(1.5),
         }
     }
