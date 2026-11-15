@@ -4,6 +4,9 @@ mod cornell;
 mod field;
 mod penumbra;
 mod showcase;
+mod studio;
+
+pub use studio::{studio, Finish};
 
 use super::{Scene, SceneBuilder};
 use crate::accel::SplitMethod;
@@ -25,6 +28,11 @@ pub const SCENES: &[SceneEntry] = &[
         name: "field",
         description: "several hundred small spheres; a BVH stress test",
         builder: field::build,
+    },
+    SceneEntry {
+        name: "knot",
+        description: "a gold trefoil knot of 98,304 triangles in a studio",
+        builder: studio::knot,
     },
     SceneEntry {
         name: "penumbra",

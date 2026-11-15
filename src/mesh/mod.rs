@@ -1,8 +1,10 @@
 //! Indexed triangle meshes and the Wavefront OBJ format.
 
 mod obj;
+mod shapes;
 
 pub use obj::{load_obj, parse_obj, to_obj, ObjError};
+pub use shapes::torus_knot;
 
 use crate::geometry::{Aabb, MaterialId, Triangle};
 use crate::math::{Point3, Vec3};
@@ -34,6 +36,22 @@ impl Mesh {
         }
         let normals = smooth_normals(&positions, triangles);
         let faces = triangles.iter().map(|t| t.map(|i| Corner { position: i, normal: i })).collect();
+        Mesh { positions, normals, faces }
+    }
+
+    /// Like [`Mesh::from_triangles`], but edges where the two faces meet at
+    /// more than `crease_degrees` stay sharp. Use this for shapes with real
+    /// corners, such as a cube, which smooth normals would shade as if bulging.
+    pub fn with_creases(positions: Vec<Point3>, triangles: &[[u32; 3]], crease_degrees: f64) -> Self {
+        for index in triangles.iter().flatten() {
+            assert!((*index as usize) < positions.len(), "triangle index {index} is out of range");
+        }
+        let normals = creased_normals(&positions, triangles, crease_degrees);
+        let faces = triangles
+            .iter()
+            .enumerate()
+            .map(|(f, t)| [0, 1, 2].map(|k| Corner { position: t[k], normal: (3 * f + k) as u32 }))
+            .collect();
         Mesh { positions, normals, faces }
     }
 
@@ -115,6 +133,61 @@ fn smooth_normals(positions: &[Point3], triangles: &[[u32; 3]]) -> Vec<Vec3> {
     sums.into_iter().map(|n| n.try_normalized().unwrap_or(Vec3::ZERO)).collect()
 }
 
+/// One normal per face corner (three per triangle, in face order): the
+/// area-weighted average of the faces around that vertex whose own normal is
+/// within `crease_degrees` of this face's.
+fn creased_normals(positions: &[Point3], triangles: &[[u32; 3]], crease_degrees: f64) -> Vec<Vec3> {
+    let weighted: Vec<Vec3> = triangles
+        .iter()
+        .map(|t| {
+            let [a, b, c] = t.map(|i| positions[i as usize]);
+            let n = (b - a).cross(c - a);
+            if n.is_finite() {
+                n
+            } else {
+                Vec3::ZERO
+            }
+        })
+        .collect();
+    let unit: Vec<Option<Vec3>> = weighted.iter().map(|n| n.try_normalized()).collect();
+
+    // Faces around each vertex, as a flat list with per-vertex offsets.
+    let mut offsets = vec![0u32; positions.len() + 1];
+    for index in triangles.iter().flatten() {
+        offsets[*index as usize + 1] += 1;
+    }
+    for v in 0..positions.len() {
+        offsets[v + 1] += offsets[v];
+    }
+    let mut cursor = offsets.clone();
+    let mut around = vec![0u32; triangles.len() * 3];
+    for (f, t) in triangles.iter().enumerate() {
+        for index in t {
+            around[cursor[*index as usize] as usize] = f as u32;
+            cursor[*index as usize] += 1;
+        }
+    }
+
+    let min_cos = crease_degrees.clamp(0.0, 180.0).to_radians().cos();
+    let mut normals = Vec::with_capacity(triangles.len() * 3);
+    for (f, t) in triangles.iter().enumerate() {
+        for index in t {
+            let neighbours = &around[offsets[*index as usize] as usize..offsets[*index as usize + 1] as usize];
+            let sum: Vec3 = match unit[f] {
+                // A degenerate face has no direction to compare against.
+                None => Vec3::ZERO,
+                Some(own) => neighbours
+                    .iter()
+                    .filter(|&&g| g as usize == f || unit[g as usize].is_some_and(|other| own.dot(other) >= min_cos))
+                    .map(|&g| weighted[g as usize])
+                    .sum(),
+            };
+            normals.push(sum.try_normalized().unwrap_or(Vec3::ZERO));
+        }
+    }
+    normals
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -144,6 +217,62 @@ pub(crate) mod tests {
             assert!(t.face_normal().dot(centre) > 0.0, "winding must face outward");
         }
         assert_eq!(mesh.triangles(MaterialId(0)).count(), 8);
+    }
+
+    fn cube() -> (Vec<Point3>, Vec<[u32; 3]>) {
+        let positions = (0..8)
+            .map(|i| Point3::new((i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64) * 2.0 - Vec3::ONE)
+            .collect();
+        let triangles = vec![
+            [0, 2, 3],
+            [0, 3, 1],
+            [4, 5, 7],
+            [4, 7, 6],
+            [0, 1, 5],
+            [0, 5, 4],
+            [2, 6, 7],
+            [2, 7, 3],
+            [0, 4, 6],
+            [0, 6, 2],
+            [1, 3, 7],
+            [1, 7, 5],
+        ];
+        (positions, triangles)
+    }
+
+    #[test]
+    fn creases_keep_cube_faces_flat() {
+        let (positions, triangles) = cube();
+        let mesh = Mesh::with_creases(positions, &triangles, 40.0);
+        for face in mesh.faces() {
+            let [a, b, c] = face.map(|corner| mesh.positions()[corner.position as usize]);
+            let flat = (b - a).cross(c - a).normalized();
+            assert!(flat.dot((a + b + c) / 3.0) > 0.0, "cube winding must face outward");
+            for corner in face {
+                assert!((mesh.normals()[corner.normal as usize] - flat).length() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn creases_do_not_split_a_smooth_surface() {
+        // Around an octahedron vertex, neighbouring face normals are about 70
+        // degrees apart and opposite ones about 110: sharp at a 40 degree
+        // limit, fully smooth at a 120 degree one.
+        let smooth = octahedron();
+        let positions = smooth.positions().to_vec();
+        let triangles: Vec<[u32; 3]> = smooth.faces().iter().map(|f| f.map(|c| c.position)).collect();
+        let relaxed = Mesh::with_creases(positions.clone(), &triangles, 120.0);
+        let strict = Mesh::with_creases(positions, &triangles, 40.0);
+        for (face, smooth_face) in relaxed.faces().iter().zip(smooth.faces()) {
+            for (corner, smooth_corner) in face.iter().zip(smooth_face) {
+                let (a, b) =
+                    (relaxed.normals()[corner.normal as usize], smooth.normals()[smooth_corner.normal as usize]);
+                assert!((a - b).length() < 1e-12);
+            }
+        }
+        let first = strict.faces()[0];
+        assert!((strict.normals()[first[0].normal as usize] - Vec3::splat(1.0).normalized()).length() < 1e-12);
     }
 
     #[test]

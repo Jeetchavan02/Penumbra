@@ -1,11 +1,13 @@
 //! Command-line front end: parse arguments, render, write a PNG.
 
+use std::path::Path;
 use std::process::ExitCode;
 use std::str::FromStr;
 
 use penumbra::accel::SplitMethod;
+use penumbra::mesh::load_obj;
 use penumbra::render::{render, RenderSettings};
-use penumbra::scene::library;
+use penumbra::scene::library::{self, Finish};
 
 const USAGE: &str = "\
 penumbra: a CPU path tracer
@@ -16,11 +18,14 @@ USAGE:
 OPTIONS:
     --scene <NAME>     Scene to render [default: penumbra]
     --list             List the available scenes and exit
+    --obj <PATH>       Render a Wavefront OBJ file in a studio instead of a named scene
+    --finish <NAME>    Surface for --obj: clay, gold or glass [default: clay]
+    --turn <DEGREES>   Rotate the --obj model about the vertical axis [default: 0]
     --width <PX>       Image width; height follows the scene's aspect ratio [default: 800]
     --spp <N>          Samples per pixel [default: 128]
     --depth <N>        Maximum path length in bounces [default: 50]
     --seed <N>         Random seed; the same seed gives the same image [default: 0]
-    --out <PATH>       Output PNG [default: <scene>.png]
+    --out <PATH>       Output PNG [default: <scene or model name>.png]
     --bvh <METHOD>     BVH split method: sah or midpoint [default: sah]
     --no-direct        Disable direct light sampling (plain path tracing)
     --clamp <VALUE>    Clamp each sample's radiance to remove fireflies (biased)
@@ -31,6 +36,9 @@ OPTIONS:
 
 struct Options {
     scene: String,
+    obj: Option<String>,
+    finish: Finish,
+    turn: f64,
     out: Option<String>,
     split: SplitMethod,
     threads: Option<usize>,
@@ -51,6 +59,9 @@ fn parse_value<T: FromStr>(flag: &str, value: Option<String>) -> Result<T, Strin
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
     let mut options = Options {
         scene: "penumbra".to_string(),
+        obj: None,
+        finish: Finish::default(),
+        turn: 0.0,
         out: None,
         split: SplitMethod::Sah,
         threads: None,
@@ -62,6 +73,13 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
             "-h" | "--help" => return Ok(Command::Help),
             "--list" => return Ok(Command::List),
             "--scene" => options.scene = parse_value(&flag, args.next())?,
+            "--obj" => options.obj = Some(parse_value(&flag, args.next())?),
+            "--turn" => options.turn = parse_value(&flag, args.next())?,
+            "--finish" => {
+                let name: String = parse_value(&flag, args.next())?;
+                options.finish = Finish::from_name(&name)
+                    .ok_or_else(|| format!("unknown finish: {name} (expected one of {})", Finish::NAMES.join(", ")))?;
+            }
             "--out" => options.out = Some(parse_value(&flag, args.next())?),
             "--width" => options.settings.width = parse_value(&flag, args.next())?,
             "--spp" => options.settings.samples_per_pixel = parse_value(&flag, args.next())?,
@@ -96,8 +114,21 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
 }
 
 fn run(mut options: Options) -> Result<(), String> {
-    let scene = library::build(&options.scene, options.split)
-        .ok_or_else(|| format!("unknown scene: {} (try --list)", options.scene))?;
+    let (name, scene) = match &options.obj {
+        Some(path) => {
+            let mesh = load_obj(path).map_err(|e| format!("{path}: {e}"))?;
+            if mesh.triangle_count() == 0 {
+                return Err(format!("{path}: no faces found"));
+            }
+            let name = Path::new(path).file_stem().map_or("model".into(), |stem| stem.to_string_lossy().into_owned());
+            (name, library::studio(&mesh, options.finish, options.turn).build(options.split))
+        }
+        None => {
+            let scene = library::build(&options.scene, options.split)
+                .ok_or_else(|| format!("unknown scene: {} (try --list)", options.scene))?;
+            (options.scene.clone(), scene)
+        }
+    };
     options.settings.height = scene.camera.height_for(options.settings.width);
     let settings = &options.settings;
 
@@ -109,7 +140,7 @@ fn run(mut options: Options) -> Result<(), String> {
     if settings.progress {
         eprintln!(
             "{}: {} primitives, {} lights, BVH {:?} with {} nodes (depth {})",
-            options.scene,
+            name,
             bvh.primitives().len(),
             scene.lights().len(),
             options.split,
@@ -128,7 +159,7 @@ fn run(mut options: Options) -> Result<(), String> {
 
     let (film, stats) = render(&scene, settings);
 
-    let out = options.out.unwrap_or_else(|| format!("{}.png", options.scene));
+    let out = options.out.unwrap_or_else(|| format!("{name}.png"));
     film.save_png(&out).map_err(|e| format!("could not write {out}: {e}"))?;
 
     let seconds = stats.elapsed.as_secs_f64();

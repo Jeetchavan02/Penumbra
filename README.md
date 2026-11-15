@@ -7,6 +7,11 @@ dependencies are `image` (PNG encoding), `rand` (random numbers) and `rayon`
 Named after the partially lit region between light and shadow, which a
 physically based renderer reproduces without being told to.
 
+![A gold trefoil knot in a studio](renders/knot.png)
+
+*`knot` scene: 98,304 triangles generated from a formula, 960x540, 1024
+samples per pixel, 40 seconds on 10 cores.*
+
 ![Three spheres at increasing heights casting progressively softer shadows](renders/penumbra.png)
 
 *`penumbra` scene, 960x540, 1024 samples per pixel. One spherical lamp, off
@@ -24,9 +29,19 @@ its shadow.*
 cargo run --release -- --scene penumbra --width 960 --spp 1024 --clamp 8 --out penumbra.png
 ```
 
+Render your own model: any Wavefront OBJ file is scaled, stood on the floor
+and lit in the same studio as the knot.
+
+```bash
+cargo run --release -- --obj path/to/model.obj --finish clay --turn 30
 ```
---scene <NAME>     penumbra, cornell, showcase or field   [default: penumbra]
+
+```
+--scene <NAME>     penumbra, knot, cornell, showcase or field [default: penumbra]
 --list             list scenes
+--obj <PATH>       render an OBJ file in a studio instead of a named scene
+--finish <NAME>    surface for --obj: clay, gold or glass  [default: clay]
+--turn <DEGREES>   rotate the --obj model about the vertical axis
 --width <PX>       height follows the scene's aspect ratio [default: 800]
 --spp <N>          samples per pixel                       [default: 128]
 --depth <N>        maximum bounces                         [default: 50]
@@ -40,12 +55,18 @@ cargo run --release -- --scene penumbra --width 960 --spp 1024 --clamp 8 --out p
 
 ## What it does
 
-- Spheres and parallelograms; diffuse, metal, glass and emissive materials.
+- Spheres, parallelograms and triangle meshes; diffuse, metal, glass and
+  emissive materials.
+- A hand-written OBJ reader (no parser dependency). Meshes without normals
+  are smoothed, except across edges sharper than 40 degrees, so a cube stays
+  a cube.
+- Triangles shade with interpolated corner normals.
 - Flat, stack-traversed BVH with midpoint or binned-SAH construction.
 - Thin-lens camera with depth of field.
 - Iterative path tracing with Russian roulette.
 - Next event estimation: every diffuse bounce samples a light directly, by
-  solid angle for spheres and by area for quads.
+  solid angle for spheres and by area for quads and triangles, so a mesh can
+  be a light.
 - Parallel over scanlines, and deterministic: the output is bit-identical for
   any thread count.
 - sRGB output.
@@ -68,7 +89,7 @@ means to agree within 2% per channel.
 
 ## How it is checked
 
-78 tests (`cargo test`). The ones that carry the most weight:
+115 tests (`cargo test`). The ones that carry the most weight:
 
 - **Furnace tests.** A sphere inside a uniformly white environment must look
   exactly as bright as its albedo; a white diffuse sphere, a perfect mirror and
@@ -76,6 +97,11 @@ means to agree within 2% per channel.
 - **BVH against brute force.** Thousands of random rays through a mixed bag of
   primitives must give the same nearest hit with and without the tree, for both
   split methods.
+- **Meshes against the analytic sphere.** A sphere built from 2,048 triangles
+  renders to within 1% of the exact one. A white diffuse mesh in the furnace
+  is invisible to within 0.2%.
+- **OBJ round trip.** A mesh written to OBJ and read back is identical to the
+  last bit; nine kinds of malformed input each report the right line.
 - **Determinism.** One thread and seven threads produce identical pixels.
   Midpoint and SAH trees produce identical pixels.
 - **Light sampling.** The estimated solid angle of a sphere and of a quad match
@@ -99,12 +125,16 @@ SAH against midpoint, single thread, same settings:
 |---|---|---|
 | `showcase`, 20 spheres | 0.63 s | 0.62 s |
 | `field`, 479 spheres | 1.04 to 1.10 s | 1.08 to 1.09 s |
+| `knot`, 98,304 triangles (16 spp) | 0.97 to 1.01 s | 1.01 to 1.04 s |
 
-That is no measurable difference. These scenes are spheres of similar size
-spread evenly, which is the case where splitting space in half is already close
-to optimal, and a sphere test costs about the same as a box test. SAH is the
-default because it is the method that keeps working when the geometry is uneven,
-not because it wins here.
+SAH is a few percent ahead on the mesh and indistinguishable on the spheres.
+All three scenes are made of evenly sized, evenly spread primitives, which is
+the case where splitting space in half is already close to optimal. SAH is the
+default because it is the method that keeps working when geometry is uneven; a
+scanned model with mixed triangle sizes is the test these scenes cannot give.
+
+Going from 479 primitives to 98,304 costs almost nothing per ray, which is the
+point of the tree.
 
 ## Limitations
 
@@ -114,4 +144,8 @@ not because it wins here.
 - Caustics are found only by chance, so they are noisy. The reference renders
   of `penumbra` and `cornell` use `--clamp 8`, which removes the resulting
   fireflies at the cost of slightly darker caustics.
-- No textures, triangles, transforms or volumes.
+- Interpolated normals are not corrected at the shadow terminator, so very
+  coarse meshes show faceted shadow edges.
+- OBJ materials, texture coordinates and groups are ignored: one finish per
+  model.
+- No textures or volumes.

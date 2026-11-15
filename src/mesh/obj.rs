@@ -8,7 +8,7 @@
 use std::fmt::{self, Write as _};
 use std::path::Path;
 
-use super::{smooth_normals, Corner, Mesh};
+use super::{Corner, Mesh};
 use crate::math::Vec3;
 
 /// A problem in an OBJ file, with the line it was found on.
@@ -36,6 +36,9 @@ pub fn load_obj(path: impl AsRef<Path>) -> Result<Mesh, ObjError> {
         .map_err(|e| ObjError { line: 0, message: format!("could not read {}: {e}", path.display()) })?;
     parse_obj(&source)
 }
+
+/// Files without normals are smoothed, except across edges sharper than this.
+const CREASE_DEGREES: f64 = 40.0;
 
 /// A face corner as written in the file, before normals are settled.
 #[derive(Clone, Copy)]
@@ -79,7 +82,7 @@ pub fn parse_obj(source: &str) -> Result<Mesh, ObjError> {
     }
 
     // Use the file's normals only if every corner has one. A mesh that
-    // supplies them for some faces and not others gets smooth normals
+    // supplies them for some faces and not others gets computed normals
     // throughout, rather than a visible seam between the two kinds.
     let has_normals = !raw_faces.is_empty() && raw_faces.iter().flatten().all(|c| c.normal.is_some());
     if has_normals {
@@ -90,9 +93,7 @@ pub fn parse_obj(source: &str) -> Result<Mesh, ObjError> {
         Ok(Mesh { positions, normals, faces })
     } else {
         let triangles: Vec<[u32; 3]> = raw_faces.iter().map(|face| face.map(|c| c.position)).collect();
-        let normals = smooth_normals(&positions, &triangles);
-        let faces = triangles.iter().map(|t| t.map(|i| Corner { position: i, normal: i })).collect();
-        Ok(Mesh { positions, normals, faces })
+        Ok(Mesh::with_creases(positions, &triangles, CREASE_DEGREES))
     }
 }
 
@@ -215,6 +216,23 @@ mod tests {
         let mesh = parse_obj("v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 1 0 0\nf 1//1 2 3\n").unwrap();
         assert_eq!(mesh.normals().len(), 3);
         assert!((mesh.normals()[0] - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-12);
+    }
+
+    #[test]
+    fn hard_edges_stay_hard_without_file_normals() {
+        use crate::geometry::Hittable;
+        use crate::math::{Interval, Ray};
+
+        // Two unit squares meeting at a right angle along the x axis.
+        let mesh = parse_obj("v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nv 1 1 0\nv 0 1 0\nf 1 4 3 2\nf 1 2 5 6\n").unwrap();
+        assert_eq!(mesh.triangle_count(), 4);
+        for t in mesh.triangles(MaterialId(0)) {
+            // Seen from its front, each triangle shades with its own face normal.
+            let centre = t.corners().into_iter().sum::<Vec3>() / 3.0;
+            let ray = Ray::new(centre + t.face_normal(), -t.face_normal());
+            let hit = t.hit(&ray, Interval::new(1e-6, f64::INFINITY)).unwrap();
+            assert!((hit.normal - t.face_normal()).length() < 1e-9);
+        }
     }
 
     #[test]
