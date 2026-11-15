@@ -53,7 +53,8 @@ impl Sampler { pub fn for_pixel(seed: u64, pixel: u64) -> Sampler; }
 // geometry
 pub struct MaterialId(u32);
 pub struct HitRecord { pub t: f64, pub point: Point3, pub normal: Vec3,
-                       pub front_face: bool, pub material: MaterialId }
+                       pub front_face: bool, pub material: MaterialId,
+                       pub primitive: u32 }
 pub trait Hittable: Send + Sync {
     fn hit(&self, ray: &Ray, t: Interval) -> Option<HitRecord>;
     fn bounding_box(&self) -> Aabb;
@@ -61,11 +62,13 @@ pub trait Hittable: Send + Sync {
 pub enum Primitive { Sphere(Sphere), Quad(Quad), Triangle(Triangle) } // Copy, impl Hittable
 
 // material
-pub struct Scatter { pub attenuation: Color, pub ray: Ray, pub specular: bool }
-pub enum Material { Lambertian(..), Metal(..), Dielectric(..), Emissive(..) }
+pub struct Scatter { pub attenuation: Color, pub ray: Ray, pub specular: bool, pub pdf: f64 }
+pub struct Bsdf { pub value: Color, pub pdf: f64 }           // BSDF * cosine, and its density
+pub enum Material { Lambertian(..), Metal(..), Dielectric(..), Emissive(..), Glossy(..) }
 impl Material {
     pub fn scatter(&self, ray_in: &Ray, hit: &HitRecord, sampler: &mut Sampler)
         -> Option<Scatter>;
+    pub fn eval(&self, ray_in: &Ray, hit: &HitRecord, wi: Vec3) -> Option<Bsdf>;
     pub fn emitted(&self) -> Color;
 }
 
@@ -133,6 +136,18 @@ gain. An index lookup into `Vec<Material>` costs one bounds check per bounce.
 The other tempting design, `Rc<dyn Material>` inside the hit record (the direct
 translation of `shared_ptr<material>`), is worse: `Rc` is not `Send`, so it
 blocks rayon entirely, and `Arc` adds an atomic increment per ray hit.
+
+### Sampling and evaluating are separate questions
+
+`scatter` answers "where does the path go next". Multiple importance sampling
+also needs "how strongly would this surface reflect light from that other
+direction, and how likely was `scatter` to pick it", which is `eval`. Mirrors
+and glass return `None`: their lobes are single directions.
+
+For the same reason a hit carries the index of the primitive it struck. When a
+reflected ray lands on a light, the integrator must ask that light how likely
+its own sampler was to choose the same direction, and for that it needs the
+light itself, not just its material.
 
 ## 3. BVH: build both, default to SAH
 
