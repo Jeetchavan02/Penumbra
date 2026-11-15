@@ -213,7 +213,7 @@ pub(super) fn partition<T>(slice: &mut [T], mut pred: impl FnMut(&T) -> bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::{MaterialId, Quad, Sphere};
+    use crate::geometry::{MaterialId, Quad, Sphere, Triangle};
     use crate::math::{Sampler, Vec3};
 
     const RANGE: Interval = Interval::new(1e-4, f64::INFINITY);
@@ -237,6 +237,11 @@ mod tests {
                     m,
                 )
                 .into(),
+                2 | 3 => {
+                    let corner = random_point(&mut s, 8.0);
+                    let corners = [corner, corner + s.unit_vector() * 1.5, corner + s.unit_vector() * 0.7];
+                    Triangle::flat(corners, m).expect("random triangle is not degenerate").into()
+                }
                 _ => Sphere::new(random_point(&mut s, 5.0), s.range(0.05, 0.5), m).into(),
             })
             .collect()

@@ -2,7 +2,7 @@
 
 use std::f64::consts::TAU;
 
-use super::{Hittable, Primitive, Quad, Sphere};
+use super::{Hittable, Primitive, Quad, Sphere, Triangle};
 use crate::math::{Interval, Point3, Ray, Sampler, Vec3};
 
 /// A direction toward a light, chosen at random.
@@ -55,20 +55,38 @@ impl Quad {
     /// angle from `origin`. `None` if the quad is seen exactly edge-on.
     pub fn sample_toward(&self, origin: Point3, sampler: &mut Sampler) -> Option<LightSample> {
         let point = self.q + self.u * sampler.uniform() + self.v * sampler.uniform();
-        let offset = point - origin;
-        let dist_sq = offset.length_squared();
-        let distance = dist_sq.sqrt();
-        if distance < 1e-9 {
-            return None;
-        }
-        let dir = offset / distance;
-        let cos_light = self.normal.dot(dir).abs();
-        if cos_light < 1e-9 {
-            return None;
-        }
-        // dA = dw * dist^2 / cos, so pdf_w = pdf_A * dist^2 / cos.
-        Some(LightSample { dir, distance, pdf: dist_sq / (cos_light * self.area) })
+        area_sample(origin, point, self.normal, self.area)
     }
+}
+
+impl Triangle {
+    /// Sample a point uniformly on the triangle and express its density in
+    /// solid angle from `origin`. `None` if it is seen exactly edge-on.
+    pub fn sample_toward(&self, origin: Point3, sampler: &mut Sampler) -> Option<LightSample> {
+        // Square-root warp of the unit square onto the triangle.
+        let r = sampler.uniform().sqrt();
+        let (a, b) = (1.0 - r, r * sampler.uniform());
+        let point = self.p0 + self.e1 * a + self.e2 * b;
+        area_sample(origin, point, self.face_normal(), self.area())
+    }
+}
+
+/// Convert a uniformly chosen `point` on a flat light of the given `area` into
+/// a direction from `origin` with its solid-angle density.
+fn area_sample(origin: Point3, point: Point3, normal: Vec3, area: f64) -> Option<LightSample> {
+    let offset = point - origin;
+    let dist_sq = offset.length_squared();
+    let distance = dist_sq.sqrt();
+    if distance < 1e-9 {
+        return None;
+    }
+    let dir = offset / distance;
+    let cos_light = normal.dot(dir).abs();
+    if cos_light < 1e-9 {
+        return None;
+    }
+    // dA = dw * dist^2 / cos, so pdf_w = pdf_A * dist^2 / cos.
+    Some(LightSample { dir, distance, pdf: dist_sq / (cos_light * area) })
 }
 
 impl Primitive {
@@ -76,6 +94,7 @@ impl Primitive {
         match self {
             Primitive::Sphere(s) => s.sample_toward(origin, sampler),
             Primitive::Quad(q) => q.sample_toward(origin, sampler),
+            Primitive::Triangle(t) => t.sample_toward(origin, sampler),
         }
     }
 }
@@ -122,6 +141,15 @@ mod tests {
             Quad::new(Point3::new(-1.0, 1.0, -1.0), Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 2.0), MaterialId(0));
         let got = estimated_solid_angle(&quad.into(), Point3::ZERO);
         assert!((got - 4.0 * PI / 6.0).abs() < 0.01, "{got}");
+    }
+
+    #[test]
+    fn triangle_samples_integrate_to_its_solid_angle() {
+        // Half of the cube face above: a twelfth of the sphere.
+        let corners = [Point3::new(-1.0, 1.0, -1.0), Point3::new(1.0, 1.0, -1.0), Point3::new(-1.0, 1.0, 1.0)];
+        let triangle = Triangle::flat(corners, MaterialId(0)).unwrap();
+        let got = estimated_solid_angle(&triangle.into(), Point3::ZERO);
+        assert!((got - 4.0 * PI / 12.0).abs() < 0.01, "{got}");
     }
 
     #[test]
