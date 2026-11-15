@@ -8,9 +8,10 @@ Only the decisions that are expensive to reverse are recorded here.
 src/
   lib.rs      library root; main.rs is a thin CLI over it
   math/       Vec3, Ray, Interval, Sampler
-  geometry/   Aabb, HitRecord, MaterialId, Hittable, Sphere, Quad, Primitive
+  geometry/   Aabb, HitRecord, MaterialId, Hittable, Sphere, Quad, Triangle, Primitive
   material/   Scatter, Material, Lambertian, Metal, Dielectric, Emissive
   accel/      Bvh, SplitMethod
+  mesh/       Mesh, OBJ reader and writer, procedural shapes
   camera/     CameraSpec, Camera
   scene/      Scene, SceneBuilder, Background, scene library
   render/     integrator (path loop), Film (accumulation, sRGB, PNG), render()
@@ -18,7 +19,9 @@ src/
 ```
 
 Dependencies point one way: `math <- geometry <- material`, `geometry <- accel`,
-then `scene` owns all of them and `render` only sees `Scene`.
+then `scene` owns all of them and `render` only sees `Scene`. `mesh` is an
+authoring format: it is flattened into `Triangle` primitives when added to a
+scene, so the renderer never sees an index buffer.
 
 Changes from the original plan:
 
@@ -55,7 +58,7 @@ pub trait Hittable: Send + Sync {
     fn hit(&self, ray: &Ray, t: Interval) -> Option<HitRecord>;
     fn bounding_box(&self) -> Aabb;
 }
-pub enum Primitive { Sphere(Sphere), Quad(Quad) }           // Copy, impl Hittable
+pub enum Primitive { Sphere(Sphere), Quad(Quad), Triangle(Triangle) } // Copy, impl Hittable
 
 // material
 pub struct Scatter { pub attenuation: Color, pub ray: Ray, pub specular: bool }
