@@ -8,5 +8,6 @@ pub mod camera;
 pub mod geometry;
 pub mod material;
 pub mod math;
+pub mod mesh;
 pub mod render;
 pub mod scene;
