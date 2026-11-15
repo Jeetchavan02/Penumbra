@@ -34,6 +34,27 @@ impl HitRecord {
         let front_face = ray.dir().dot(outward_normal) < 0.0;
         HitRecord { t, point, normal: if front_face { outward_normal } else { -outward_normal }, front_face, material }
     }
+
+    /// For surfaces whose shading normal differs from their geometry, such as
+    /// a triangle with interpolated corner normals. `geometric_normal` decides
+    /// which side was hit; `shading_normal` is what materials see.
+    pub fn with_shading_normal(
+        ray: &Ray,
+        t: f64,
+        point: Point3,
+        geometric_normal: Vec3,
+        shading_normal: Vec3,
+        material: MaterialId,
+    ) -> Self {
+        let mut hit = HitRecord::new(ray, t, point, geometric_normal, material);
+        let shading = if hit.front_face { shading_normal } else { -shading_normal };
+        // Near a silhouette an interpolated normal can point away from the
+        // viewer, which no real surface does. Keep the geometric one there.
+        if shading.dot(ray.dir()) < 0.0 {
+            hit.normal = shading;
+        }
+        hit
+    }
 }
 
 /// Anything a ray can intersect.
